@@ -1,0 +1,6 @@
+applicationType: default
+defaultPackage: com.christech
+testFramework: junit
+sourceLanguage: kotlin
+buildTool: gradle_kotlin
+features: [amazon-api-gateway-http, app-name, aws-cdk, aws-lambda, aws-lambda-events-serde, aws-lambda-handler-apigateway-v2, aws-lambda-handler-default, aws-v2-sdk, dynamodb, gradle, http-client-test, jdbc-hikari, junit, kotlin, kotlin-application, ksp, logback, micronaut-aot, micronaut-build, micronaut-http-validation, netty-server, postgres, properties, readme, serialization-jackson, shade, snapstart, test-resources, validation, x86]

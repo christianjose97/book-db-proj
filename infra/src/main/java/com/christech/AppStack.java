@@ -1,0 +1,96 @@
+package com.christech;
+
+import io.micronaut.aws.cdk.function.MicronautFunction;
+import io.micronaut.aws.cdk.function.MicronautFunctionFile;
+import io.micronaut.starter.application.ApplicationType;
+import io.micronaut.starter.options.BuildTool;
+import software.amazon.awscdk.CfnOutput;
+import software.amazon.awscdk.Duration;
+import software.amazon.awscdk.Stack;
+import software.amazon.awscdk.StackProps;
+import software.amazon.awscdk.services.lambda.Runtime;
+import software.amazon.awscdk.services.lambda.Architecture;
+import software.amazon.awscdk.services.dynamodb.Attribute;
+import software.amazon.awscdk.services.dynamodb.AttributeType;
+import software.amazon.awscdk.services.dynamodb.Table;
+import software.amazon.awscdk.services.lambda.SnapStartConf;
+import software.amazon.awscdk.services.lambda.Alias;
+import software.amazon.awscdk.services.lambda.Version;
+import software.amazon.awscdk.services.apigatewayv2.alpha.HttpApi;
+import software.amazon.awscdk.services.apigatewayv2.integrations.alpha.HttpLambdaIntegration;
+import software.amazon.awscdk.services.lambda.Code;
+import software.amazon.awscdk.services.lambda.Function;
+import software.amazon.awscdk.services.lambda.Tracing;
+import software.amazon.awscdk.services.logs.RetentionDays;
+import software.constructs.Construct;
+import java.util.HashMap;
+import java.util.Map;
+
+public class AppStack extends Stack {
+
+    public AppStack(final Construct parent, final String id) {
+        this(parent, id, null);
+    }
+
+    public AppStack(final Construct parent, final String id, final StackProps props) {
+        super(parent, id, props);
+
+        Map<String, String> environmentVariables = new HashMap<>();
+        Table table = Table.Builder.create(this, "micronautapptable")
+                .partitionKey(Attribute.builder()
+                        .name("pk")
+                        .type(AttributeType.STRING)
+                        .build())
+                .sortKey(Attribute.builder()
+                        .name("sk")
+                        .type(AttributeType.STRING)
+                        .build())
+                .build();
+
+        environmentVariables.put("DYNAMODB_TABLE_NAME", table.getTableName());
+        Function function = MicronautFunction.create(ApplicationType.DEFAULT,
+                false,
+                this,
+                "micronaut-function")
+                .runtime(Runtime.JAVA_17)
+                .handler("io.micronaut.function.aws.proxy.payload2.APIGatewayV2HTTPEventFunction")
+                .environment(environmentVariables)
+                .code(Code.fromAsset(functionPath()))
+                .timeout(Duration.seconds(10))
+                .memorySize(2048)
+                .logRetention(RetentionDays.ONE_WEEK)
+                .tracing(Tracing.DISABLED)
+                .architecture(Architecture.X86_64)
+                .snapStart(SnapStartConf.ON_PUBLISHED_VERSIONS)
+                .build();
+        table.grantReadWriteData(function);
+        Version currentVersion = function.getCurrentVersion();
+        Alias prodAlias = Alias.Builder.create(this, "ProdAlias")
+                .aliasName("Prod")
+                .version(currentVersion)
+                .build();
+        HttpLambdaIntegration integration = HttpLambdaIntegration.Builder.create("HttpLambdaIntegration", prodAlias)
+                .build();
+        HttpApi api = HttpApi.Builder.create(this, "micronaut-function-api")
+                .defaultIntegration(integration)
+                .build();
+        CfnOutput.Builder.create(this, "MnTestApiUrl")
+                .exportName("MnTestApiUrl")
+                .value(api.getUrl())
+                .build();
+    }
+
+    public static String functionPath() {
+        return "../app/build/libs/" + functionFilename();
+    }
+
+    public static String functionFilename() {
+        return MicronautFunctionFile.builder()
+            .optimized()
+            .graalVMNative(false)
+            .version("0.1")
+            .archiveBaseName("app")
+            .buildTool(BuildTool.GRADLE)
+            .build();
+    }
+}
